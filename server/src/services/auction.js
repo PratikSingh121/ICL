@@ -4,7 +4,7 @@ import { emitAuction } from '../socket.js';
 import { httpError } from '../middleware.js';
 
 const populateAuction = (query) => query
-  .populate('currentPlayer')
+  .populate('currentPlayer', '-syncedData -manualOverrides')
   .populate('highestBidder', 'name shortName logo purseBalance spent');
 
 export async function getAuctionState(id) {

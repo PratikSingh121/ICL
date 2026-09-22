@@ -5,10 +5,10 @@ import jwt from 'jsonwebtoken';
 import PDFDocument from 'pdfkit';
 import { config } from './config.js';
 import { asyncHandler, authenticate, authorize, httpError } from './middleware.js';
-import { Auction, AuctionEvent, Ball, Bid, Gallery, Match, Player, Setting, SyncCache, Team, Tournament, User } from './models.js';
+import { Auction, AuctionEvent, Ball, Bid, Gallery, Match, Player, SyncCache, Team, Tournament, User } from './models.js';
 import { askChatbot } from './services/chatbot.js';
 import { closeWithoutSale, getAuctionState, pauseAuction, placeBid, reauctionPlayer, resumeAuction, sellPlayer, startPlayer, undoLastBid } from './services/auction.js';
-import { runCricHeroesSync } from './services/cricheroes.js';
+import adminRoutes from './adminRoutes.js';
 
 const router = Router();
 const sign = (user) => jwt.sign({ sub: user._id, role: user.role, team: user.team }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
@@ -21,6 +21,9 @@ router.post('/auth/login', asyncHandler(async (req, res) => {
 }));
 router.get('/auth/me', authenticate, (req, res) => res.json(req.user));
 router.post('/auth/users', authenticate, authorize('admin'), asyncHandler(async (req, res) => {
+  if (!req.body.password || String(req.body.password).length < 8) throw httpError(400, 'Password must be at least 8 characters');
+  if (req.body.team && !(await Team.exists({ _id: req.body.team }))) throw httpError(400, 'Team does not exist');
+  if (req.body.role === 'manager' && !req.body.team) throw httpError(400, 'A manager must be assigned to a team');
   const user = await User.create({ name: req.body.name, email: req.body.email, passwordHash: await bcrypt.hash(req.body.password, 12), role: req.body.role, team: req.body.team || null });
   res.status(201).json(user);
 }));
@@ -30,14 +33,14 @@ router.get('/public/home', asyncHandler(async (_req, res) => {
     Match.find({ status: 'live' }).populate('teamA teamB', 'name shortName logo').lean(),
     Match.find({ status: 'upcoming' }).sort({ startsAt: 1 }).limit(8).populate('teamA teamB', 'name shortName logo').lean(),
     Team.find().sort({ 'stats.points': -1, 'stats.nrr': -1 }).select('name shortName logo color stats').lean(),
-    Player.find().sort({ 'stats.runs': -1 }).limit(5).populate('team', 'name shortName').lean(),
-    Player.find().sort({ 'stats.wickets': -1 }).limit(5).populate('team', 'name shortName').lean(),
+    Player.find().select('-syncedData -manualOverrides').sort({ 'stats.runs': -1 }).limit(5).populate('team', 'name shortName').lean(),
+    Player.find().select('-syncedData -manualOverrides').sort({ 'stats.wickets': -1 }).limit(5).populate('team', 'name shortName').lean(),
     SyncCache.findOne({ source: 'cricheroes' }).sort({ lastUpdatedAt: -1 }).lean(),
   ]);
   res.json({ liveMatches, upcomingFixtures, pointsTable, orangeCap, purpleCap, lastUpdated: sync?.lastUpdatedAt || new Date(), syncStatus: sync?.status || 'manual' });
 }));
-router.get('/teams', asyncHandler(async (_req, res) => res.json(await Team.find().sort({ name: 1 }).lean())));
-router.get('/teams/:id', asyncHandler(async (req, res) => { const team = await Team.findById(req.params.id).lean(); if (!team) throw httpError(404, 'Team not found'); res.json({ ...team, squad: await Player.find({ team: team._id }).lean() }); }));
+router.get('/teams', asyncHandler(async (_req, res) => res.json(await Team.find().select('-syncedData -manualOverrides').sort({ name: 1 }).lean())));
+router.get('/teams/:id', asyncHandler(async (req, res) => { const team = await Team.findById(req.params.id).select('-syncedData -manualOverrides').lean(); if (!team) throw httpError(404, 'Team not found'); res.json({ ...team, squad: await Player.find({ team: team._id }).select('-syncedData -manualOverrides').lean() }); }));
 router.get('/players', asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.role) filter.role = req.query.role;
@@ -45,13 +48,13 @@ router.get('/players', asyncHandler(async (req, res) => {
   if (req.query.state) filter.auctionState = req.query.state;
   if (req.query.team) filter.team = req.query.team;
   if (req.query.q) filter.name = { $regex: String(req.query.q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
-  res.json(await Player.find(filter).populate('team', 'name shortName logo').sort({ rating: -1, name: 1 }).lean());
+  res.json(await Player.find(filter).select('-syncedData -manualOverrides').populate('team', 'name shortName logo').sort({ rating: -1, name: 1 }).lean());
 }));
-router.get('/players/:id', asyncHandler(async (req, res) => { const row = await Player.findById(req.params.id).populate('team').lean(); if (!row) throw httpError(404, 'Player not found'); res.json(row); }));
-router.get('/matches', asyncHandler(async (req, res) => { const f = req.query.status ? { status: req.query.status } : {}; res.json(await Match.find(f).sort({ startsAt: 1 }).populate('teamA teamB tournament').lean()); }));
-router.get('/matches/:id', asyncHandler(async (req, res) => { const row = await Match.findById(req.params.id).populate('teamA teamB tournament').lean(); if (!row) throw httpError(404, 'Match not found'); res.json({ ...row, balls: await Ball.find({ match: row._id }).sort({ innings: 1, over: 1, ball: 1 }).populate('batter bowler dismissedPlayer', 'name').lean() }); }));
+router.get('/players/:id', asyncHandler(async (req, res) => { const row = await Player.findById(req.params.id).select('-syncedData -manualOverrides').populate('team', '-syncedData -manualOverrides').lean(); if (!row) throw httpError(404, 'Player not found'); res.json(row); }));
+router.get('/matches', asyncHandler(async (req, res) => { const f = req.query.status ? { status: req.query.status } : {}; res.json(await Match.find(f).select('-syncedData -manualOverrides').sort({ startsAt: 1 }).populate('teamA teamB tournament', '-syncedData -manualOverrides').lean()); }));
+router.get('/matches/:id', asyncHandler(async (req, res) => { const row = await Match.findById(req.params.id).select('-syncedData -manualOverrides').populate('teamA teamB tournament', '-syncedData -manualOverrides').lean(); if (!row) throw httpError(404, 'Match not found'); res.json({ ...row, balls: await Ball.find({ match: row._id }).sort({ innings: 1, over: 1, ball: 1 }).populate('batter bowler dismissedPlayer', 'name').lean() }); }));
 router.get('/gallery', asyncHandler(async (_req, res) => res.json(await Gallery.find().sort({ takenAt: -1, createdAt: -1 }).lean())));
-router.get('/tournament', asyncHandler(async (_req, res) => res.json(await Tournament.findOne().sort({ createdAt: -1 }).lean())));
+router.get('/tournament', asyncHandler(async (_req, res) => res.json(await Tournament.findOne().select('-syncedData -manualOverrides').sort({ createdAt: -1 }).lean())));
 
 router.get('/auction/current', asyncHandler(async (_req, res) => res.json(await getAuctionState())));
 router.get('/auction/:id', asyncHandler(async (req, res) => res.json(await getAuctionState(req.params.id))));
@@ -79,23 +82,17 @@ router.post('/chatbot', chatLimiter, asyncHandler(async (req, res) => {
   res.json(await askChatbot(question, req.ip));
 }));
 
-const admin = [authenticate, authorize('admin')];
-for (const [path, Model] of [['teams', Team], ['players', Player], ['matches', Match], ['gallery', Gallery], ['tournaments', Tournament], ['auctions', Auction]]) {
-  router.post(`/admin/${path}`, ...admin, asyncHandler(async (req, res) => res.status(201).json(await Model.create(req.body))));
-  router.patch(`/admin/${path}/:id`, ...admin, asyncHandler(async (req, res) => res.json(await Model.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }))));
-}
+router.use('/admin', adminRoutes);
 router.post('/scorer/matches/:id/balls', authenticate, authorize('admin', 'auctioneer'), asyncHandler(async (req, res) => {
   const ball = await Ball.create({ ...req.body, match: req.params.id, source: 'scorer' });
   const total = Number(ball.runs) + Number(ball.extraRuns); const update = { $inc: { [`innings.${ball.innings - 1}.runs`]: total } };
   if (ball.wicket) update.$inc[`innings.${ball.innings - 1}.wickets`] = 1;
   await Match.findByIdAndUpdate(req.params.id, update); res.status(201).json(ball);
 }));
-router.patch('/admin/settings/cricheroes', ...admin, asyncHandler(async (req, res) => res.json(await Setting.findOneAndUpdate({ key: 'cricheroesSyncEnabled' }, { value: Boolean(req.body.enabled) }, { upsert: true, new: true }))));
-router.post('/admin/sync/cricheroes', ...admin, asyncHandler(async (_req, res) => res.json(await runCricHeroesSync())));
 
 router.get('/auction/:id/export.csv', authenticate, authorize('admin', 'auctioneer'), asyncHandler(async (req, res) => {
   const rows = await Player.find({ auctionState: { $in: ['sold', 'unsold'] } }).populate('team', 'name').lean();
-  const esc = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+  const esc = (v) => { let value = String(v ?? ''); if (/^[\t\r\n ]*[=+\-@]/.test(value)) value = `'${value}`; return `"${value.replaceAll('"', '""')}"`; };
   res.type('text/csv').attachment('icl-auction-report.csv').send(['Player,Category,Role,Status,Team,Price', ...rows.map((p) => [p.name, p.category, p.role, p.auctionState, p.team?.name, p.soldPrice].map(esc).join(','))].join('\n'));
 }));
 router.get('/auction/:id/receipt/:teamId.pdf', authenticate, authorize('admin', 'auctioneer', 'manager'), asyncHandler(async (req, res) => {

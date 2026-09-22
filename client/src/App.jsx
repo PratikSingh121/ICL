@@ -5,6 +5,7 @@ import {Area,AreaChart,CartesianGrid,Cell,Pie,PieChart,ResponsiveContainer,Toolt
 import {io} from 'socket.io-client'
 import {api,SOCKET_URL} from './api'
 import {auctionBids,fixtures,money,players,recentMatches,teams} from './data'
+import Admin from './Admin'
 
 const nav=[['/','Home'],['/teams','Teams'],['/players','Players'],['/matches','Matches'],['/gallery','Gallery'],['/rules','Rules']]
 const badge=t=><span className="pill">{t}</span>
@@ -77,4 +78,4 @@ function Chatbot(){const [open,setOpen]=useState(false),[messages,setMessages]=u
 
 function NotFound(){return <section className="not-found"><span>404</span><h1>OUT!</h1><p>That page has left the field.</p><Link className="btn gold" to="/">Back home</Link></section>}
 
-export default function App(){return <Shell><Routes><Route path="/" element={<Home/>}/><Route path="/teams" element={<Teams/>}/><Route path="/teams/:id" element={<TeamDetail/>}/><Route path="/players" element={<Players/>}/><Route path="/players/:id" element={<PlayerDetail/>}/><Route path="/matches" element={<Matches/>}/><Route path="/matches/:id" element={<MatchDetail/>}/><Route path="/gallery" element={<Gallery/>}/><Route path="/rules" element={<Rules/>}/><Route path="/auction" element={<Auction/>}/><Route path="/dashboard" element={<Dashboard/>}/><Route path="/login" element={<Login/>}/><Route path="*" element={<NotFound/>}/></Routes></Shell>}
+export default function App(){const loc=useLocation();if(loc.pathname.startsWith('/admin'))return <Routes><Route path="/admin/*" element={<Admin/>}/></Routes>;return <Shell><Routes><Route path="/" element={<Home/>}/><Route path="/teams" element={<Teams/>}/><Route path="/teams/:id" element={<TeamDetail/>}/><Route path="/players" element={<Players/>}/><Route path="/players/:id" element={<PlayerDetail/>}/><Route path="/matches" element={<Matches/>}/><Route path="/matches/:id" element={<MatchDetail/>}/><Route path="/gallery" element={<Gallery/>}/><Route path="/rules" element={<Rules/>}/><Route path="/auction" element={<Auction/>}/><Route path="/dashboard" element={<Dashboard/>}/><Route path="/login" element={<Login/>}/><Route path="*" element={<NotFound/>}/></Routes></Shell>}

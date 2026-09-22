@@ -29,6 +29,7 @@ export function authorize(...roles) {
 export function errorHandler(error, req, res, _next) {
   console.error(error);
   if (error.name === 'ValidationError') return res.status(400).json({ message: error.message });
+  if (error.name === 'CastError') return res.status(400).json({ message: `Invalid ${error.path}` });
   if (error.code === 11000) return res.status(409).json({ message: 'That record already exists', fields: error.keyValue });
   return res.status(error.status || 500).json({ message: error.expose ? error.message : 'Something went wrong' });
 }

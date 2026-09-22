@@ -7,6 +7,7 @@ A responsive MERN application for the public league website, role-controlled liv
 - League home, teams, players, scorecards, gallery, rules, points table, fixtures, and cap leaders
 - Atomic server-validated bidding, synchronized timer, purse/squad controls, projector mode, history, analytics, CSV, and PDF receipts
 - Admin, auctioneer, manager, and viewer authorization with JWT and bcrypt
+- Admin CMS for teams, players, fixtures/scores, gallery, rules, auctions, users, CSV data, and CricHeroes controls
 - Groq-powered English/Hindi/Hinglish answers with rate limiting, short-term caching, and regex Basic mode
 - Manual/scorer/CricHeroes data-source fields, scheduled public-page caching, freshness status, and manual override support
 
@@ -26,6 +27,7 @@ On macOS/Linux use `cp` instead of `Copy-Item`. Set `MONGODB_URI` and a strong `
 
 Frontend: `http://localhost:5173`  
 API/Socket.io: `http://localhost:4000`
+Admin CMS: `http://localhost:5173/admin` (admin role required)
 
 Seeded accounts all use the local-demo password `ChangeMe123!`:
 

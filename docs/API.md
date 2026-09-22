@@ -84,22 +84,53 @@ The client should render a 409 response as a stale/invalid bid and immediately r
 
 ## Administration and scorer
 
-Admins can create and patch `teams`, `players`, `matches`, `gallery`, `tournaments`, and `auctions` through:
+Every `/admin/*` route requires an authenticated user whose current database role is `admin`. The API re-checks the user on each request; hiding the admin link in the client is not the security boundary.
 
-```text
-POST  /admin/:collection
-PATCH /admin/:collection/:id
+Teams, players, matches, tournaments, and gallery items support paginated administration. List responses use:
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "page": 1,
+  "pages": 1
+}
 ```
 
-Additional operations:
+The common resource routes are:
+
+```text
+GET    /admin/:collection
+GET    /admin/:collection/:id
+POST   /admin/:collection
+PATCH  /admin/:collection/:id
+DELETE /admin/:collection/:id
+```
+
+`collection` is one of `teams`, `players`, `matches`, `gallery`, or `tournaments`. Deletes return `{ "deleted": true, "id": "..." }` and are rejected with 409 when they would break protected league or auction references.
+
+Additional CMS operations:
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
+| GET | `/admin/overview` | Admin | CMS counts and readiness data |
+| POST | `/admin/players/import-csv` | Admin | Validate and import up to 500 players |
+| GET/POST | `/admin/users` | Admin | List or create role-controlled users |
+| GET/PATCH/DELETE | `/admin/users/:id` | Admin | Read, edit, or delete a user with last-admin protections |
+| GET/POST | `/admin/auctions` | Admin | List or create draft auctions |
+| GET | `/admin/auctions/:id` | Admin | Read populated auction setup/state |
+| PATCH | `/admin/auctions/:id/config` | Admin | Update paused/draft timer, increment, name, and round |
+| PUT | `/admin/auctions/:id/queue` | Admin | Replace queue with `{ "playerIds": [] }` |
+| POST/DELETE | `/admin/auctions/:id/queue/:playerId` | Admin | Add/remove one queued player |
+| POST | `/admin/auctions/:id/actions/next` | Admin | Start and remove the first queued player |
+| GET | `/admin/cricheroes` | Admin | Read toggle and cached sync health |
+| PATCH | `/admin/cricheroes` | Admin | `{ "enabled": true }` toggles scheduled sync |
+| POST | `/admin/cricheroes/sync` | Admin | Force a controlled sync immediately |
 | POST | `/scorer/matches/:id/balls` | Admin/Auctioneer | Store a delivery and increment innings score |
-| PATCH | `/admin/settings/cricheroes` | Admin | `{ "enabled": true }` toggles scheduled sync |
-| POST | `/admin/sync/cricheroes` | Admin | Run a controlled sync immediately |
 
-Manual override fields are stored separately from cached source data. Each Team, Player, Match, and Tournament can store `cricheroesId`, `cricheroesUrl`, source metadata, and `lastSyncedAt`.
+Player CSV accepts `text/csv` directly or JSON `{ "csv": "..." }`. Required headings are `name`, `role`, and `basePrice`; optional headings include category, rating, photo, styles, statistics, and CricHeroes identifiers. Quoted commas, escaped quotes, CRLF/LF, and quoted multiline fields are supported. Existing names are skipped case-insensitively and the response reports `imported` and `skipped` counts.
+
+The compatibility aliases `/admin/settings/cricheroes` and `/admin/sync/cricheroes` remain available. Manual override fields are stored separately from cached source data. Each Team, Player, Match, and Tournament can store `cricheroesId`, `cricheroesUrl`, source metadata, and `lastSyncedAt`. Media uses validated HTTP(S) URLs rather than local upload storage so Render/Vercel deployments remain stateless. CricHeroes fetching accepts only exact `cricheroes.com` hosts and does not follow redirects.
 
 ## Socket.io events
 
