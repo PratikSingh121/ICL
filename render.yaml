@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: icl-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start -w server
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: CLIENT_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: CRICHEROES_SYNC_ENABLED
+        value: "false"
+      - key: CRICHEROES_SYNC_CRON
+        value: "0 */6 * * *"
